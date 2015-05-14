@@ -3,21 +3,34 @@ import SimpleOpenNI.*;
 import com.temboo.core.*;
 import com.temboo.Library.Flickr.Photos.*;
 import org.apache.commons.codec.binary.Base64;
+import ddf.minim.spi.*;
+import ddf.minim.signals.*;
+import ddf.minim.*;
+import ddf.minim.analysis.*;
+import ddf.minim.ugens.*;
+import ddf.minim.effects.*;
 
 String apiKey, apiSecret, accessToken, accessSecret;
 String tembooName, tembooProject, tembooKey;
 
-ArrayList<String> uploaded = new ArrayList<String> ();
+ArrayList<String> uploaded = new ArrayList<String>();
 // Create a session using your Temboo account application details
-TembooSession;
+TembooSession session;
 
+//kinect & serial variables
 SimpleOpenNI kinect;
 Serial port;
+
+//minim variables
+Minim minim;
+AudioPlayer ap;
+float a;
 
 boolean up;
 boolean prevUp;
 
-int delayTime;
+int startTimer;
+int delayTime = 0;
 
 void setup() {
   size(640, 480);
@@ -30,6 +43,10 @@ void setup() {
     return;
   }
   
+  //load audio
+  minim = new Minim(this);
+  ap = minim.loadFile("Ride Wit Me.wav");
+  
   //load temboo info and start session
   String[] tembooInfo = loadStrings("temboo-info.txt");
   tembooName = tembooInfo[0];
@@ -37,7 +54,7 @@ void setup() {
   tembooKey = tembooInfo[2];
   session = new TembooSession(tembooName, tembooProject, tembooKey);
   
-  delayTime = millis();
+  startTimer = frameCount;
   
   kinect.enableDepth();
   kinect.enableUser();
@@ -80,6 +97,7 @@ void draw() {
       stroke(255, 0, 0);
       drawSkeleton(userList[i]);
       handsUp(userList[i]);
+      increaseVolume();
     }
   }
   
@@ -120,20 +138,25 @@ void handsUp(int userId) {
       
       //only send serial value when hands cross the threshold
       println("DON'T SHOOT " + frameCount);
-      delayTime = millis();
+      ap.pause();
+      ap.rewind();
       port.write('0');
+      startTimer = frameCount;
+      // println(startTimer + ", " + frameCount);
       
     } else {
       port.write('1');
     }
     
-    println(millis() - delayTime);
+    delayTime = frameCount - startTimer;
     
     //delay the camera shutter
-    if (millis() - delayTime >= 300) {
+    if (delayTime == 1) {
         
         port.write('2');
-        delayTime = millis();
+        println("shutter, " + delayTime);
+        delayTime = 0;
+
       }
 
   } else {
@@ -234,6 +257,17 @@ void listFiles() {
   println(uploaded);
 }
 
+//increases the longer someone stays tracked
+void increaseVolume() {
+  
+  if (ap.isPlaying()) {    
+    a = map(ap.position(), 0, ap.length()/3, -35, -13);
+    ap.setGain(a);
+  }
+  
+  
+}
+
 // -----------------------------------------------------------------
 // SimpleOpenNI events
 
@@ -243,11 +277,13 @@ void onNewUser(SimpleOpenNI curkinect, int userId)
   println("\tstart tracking skeleton");
   
   curkinect.startTrackingSkeleton(userId);
+  ap.play();
 }
 
 void onLostUser(SimpleOpenNI curkinect, int userId)
 {
   println("onLostUser - userId: " + userId);
+  
 }
 
 void onVisibleUser(SimpleOpenNI curkinect, int userId)
